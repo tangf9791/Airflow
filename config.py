@@ -43,6 +43,7 @@ DISPLAY_MODES = [
 # 客户端画面呈现方式（PC 端如何显示收到的视频流）
 PRESENT_MODES = [
     ("全屏镜像（拉伸铺满）", "fullscreen"),
+    ("等比缩放（保持比例，完整显示）", "fit"),
     ("扩展屏（1:1 不拉伸）", "native"),
 ]
 FLIP_MODES = [

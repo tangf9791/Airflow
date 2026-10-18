@@ -1,7 +1,7 @@
 #!/bin/bash
 # Airflow · Mac 键盘共享客户端（终端一键安装 / 免文件权限）
 # 用法：在 Mac 终端执行  curl -fsSL http://<PC-IP>:8123/install.sh | bash
-set -u
+# 不使用 set -u：任何变量缺失都不应中断连接
 
 PC_IP="__AIRFLOW_PC_IP__"
 DESKFLOW_VERSION="1.27.0"

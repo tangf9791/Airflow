@@ -2,7 +2,7 @@
 # Airflow · Mac 键盘共享客户端
 # 用法：在 Mac 上双击运行（或右键 → 打开）。按 Ctrl+C 退出。
 # 原理：调用 Deskflow 核心的内置客户端模式，把本机作为客户端连接到 Windows。
-set -u
+# 不使用 set -u：任何变量缺失都不应中断连接
 
 PC_IP="__AIRFLOW_PC_IP__"
 DESKFLOW_VERSION="1.27.0"

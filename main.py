@@ -45,7 +45,7 @@ from kvm import extract_portable, portable_dir, resolve_deskflow
 from lanshare import LanShare
 from settings_dialog import SettingsDialog
 
-APP_VERSION = "2.7.5"
+APP_VERSION = "2.7.6"
 LOG_FILE = Path(tempfile.gettempdir()) / "Airflow.log"
 
 VK_F1 = 0x70
@@ -436,11 +436,14 @@ class QuickChooser(QDialog):
         root.addWidget(self._hint)
         row = QHBoxLayout()
         b1 = QPushButton("全屏镜像")
-        b2 = QPushButton("扩展屏 (1:1)")
+        b2 = QPushButton("等比缩放")
+        b3 = QPushButton("扩展屏 (1:1)")
         b1.clicked.connect(lambda: self._choose("fullscreen"))
-        b2.clicked.connect(lambda: self._choose("native"))
+        b2.clicked.connect(lambda: self._choose("fit"))
+        b3.clicked.connect(lambda: self._choose("native"))
         row.addWidget(b1)
         row.addWidget(b2)
+        row.addWidget(b3)
         root.addLayout(row)
         self._remember = QCheckBox("记住为该客户端类型的默认")
         root.addWidget(self._remember)
@@ -469,6 +472,10 @@ class QuickChooser(QDialog):
             event.accept()
             return
         if key == Qt.Key.Key_2:
+            self._choose("fit")
+            event.accept()
+            return
+        if key == Qt.Key.Key_3:
             self._choose("native")
             event.accept()
             return
@@ -926,13 +933,18 @@ class ReceiverWindow(QWidget):
         log(f"chooser: mode={mode} remember={remember}")
 
     def set_present(self, mode: str) -> None:
-        self._active_present = mode if mode in ("fullscreen", "native") else "fullscreen"
+        self._active_present = (mode if mode in ("fullscreen", "fit", "native")
+                                else "fullscreen")
         log(f"present -> {self._active_present}")
         self._apply_video_layout()
 
     def toggle_present(self) -> None:
-        self.set_present("native" if self._active_present == "fullscreen"
-                         else "fullscreen")
+        order = ("fullscreen", "fit", "native")
+        try:
+            idx = order.index(self._active_present)
+        except ValueError:
+            idx = 0
+        self.set_present(order[(idx + 1) % len(order)])
 
     @staticmethod
     def _compute_video_rect(cw: int, ch: int, mode: str,
@@ -940,11 +952,15 @@ class ReceiverWindow(QWidget):
         """计算内嵌视频窗口的 (x, y, w, h)。
 
         fullscreen：铺满客户区（拉伸）；
+        fit：保持来流宽高比，缩放到刚好铺满（可放大，完整显示，可能留黑边）；
         native：按来流分辨率 1:1 居中，超出时等比缩小，不放大。
         """
-        if mode == "native" and stream and stream[0] > 1 and stream[1] > 1:
+        if mode in ("fit", "native") and stream and stream[0] > 1 and stream[1] > 1:
             sw, sh = stream
-            scale = min(cw / sw, ch / sh, 1.0)
+            if mode == "fit":
+                scale = min(cw / sw, ch / sh)  # 允许放大，始终完整显示
+            else:
+                scale = min(cw / sw, ch / sh, 1.0)  # 1:1，不放大
             w = max(1, int(sw * scale))
             h = max(1, int(sh * scale))
             return (cw - w) // 2, (ch - h) // 2, w, h
@@ -1138,6 +1154,7 @@ class ReceiverWindow(QWidget):
             menu.addAction("设置 (F1)", self.open_settings)
             menu.addAction("重启投屏服务 (F5)", lambda: self.restart_uxplay("tray"))
             menu.addAction("显示方式：全屏拉伸", lambda: self.set_present("fullscreen"))
+            menu.addAction("显示方式：等比缩放", lambda: self.set_present("fit"))
             menu.addAction("显示方式：1:1 扩展", lambda: self.set_present("native"))
             menu.addAction("复制 Mac 客户端下载链接", self._copy_lan_link)
             menu.addSeparator()
