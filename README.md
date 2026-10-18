@@ -1,6 +1,6 @@
-# AirMirror（iPad 投屏接收端）
+# Airflow（iPad 投屏接收端）
 
-![AirMirror](app_icon.png)
+![Airflow](app_icon.png)
 
 一个极简的 Windows AirPlay 镜像接收桌面程序：用 **PyQt6** 做无边框、置顶、
 全屏的管理界面，在后台拉起开源 **uxplay.exe** 接收 iPad / Mac 投屏，并把视频窗口
@@ -8,7 +8,7 @@
 
 ## 下载使用（推荐）
 
-1. 打开 [Releases](https://github.com/tangf9791/AirMirror/releases) 下载最新的 `AirMirror.exe`（单文件，已内置 uxplay，无需安装 Python）；
+1. 打开 [Releases](https://github.com/tangf9791/Airflow/releases) 下载最新的 `Airflow.exe`（单文件，**无需安装 Python、无需编译、无需任何依赖**，下载即用；已内置 uxplay 运行环境）；
 2. 如果电脑没装过 Bonjour，先装 [Bonjour Print Services](https://support.apple.com/downloads/bonjour-print-services-for-windows)
    （或运行 `uxplay/1-安装Bonjour.bat`）；
 3. 双击运行，在 iPad / Mac 上打开“屏幕镜像”，选择 **iPad-Screen** 即可。
@@ -26,14 +26,14 @@
 - 音频开关、画面翻转/旋转、多显示器选择、窗口位置记忆、连接提示音
 - 按客户端类型自动呈现：iPad 投屏默认全屏拉伸，Mac 连接默认 1:1 扩展（像第二块显示器），
   也可在连接时弹窗快速选择，或按 **F2** 随时切换
-- 设置自动保存到 `%APPDATA%\AirMirror\config.json`
+- 设置自动保存到 `%APPDATA%\Airflow\config.json`
 
 ## 目录结构
 
 | 文件 | 说明 |
 | --- | --- |
 | `main.py` | 程序主体（唯一的源码文件） |
-| `AirMirror.spec` | PyInstaller 单文件打包配置 |
+| `Airflow.spec` | PyInstaller 单文件打包配置 |
 | `build.bat` | 一键打包脚本 |
 | `download_uxplay.ps1` | 下载预编译 uxplay 到 `uxplay\` 子目录的脚本 |
 | `requirements.txt` / `requirements-build.txt` | 运行 / 构建依赖 |
@@ -85,10 +85,10 @@ build.bat
 
 ```bat
 python -m pip install -r requirements-build.txt
-pyinstaller --clean --noconfirm AirMirror.spec
+pyinstaller --clean --noconfirm Airflow.spec
 ```
 
-产物：`dist\AirMirror.exe`（单文件，约 240 MB，无控制台窗口，已内置 uxplay 运行环境）。
+产物：`dist\Airflow.exe`（单文件，约 240 MB，无控制台窗口，已内置 uxplay 运行环境）。
 把 `uxplay.exe` 放到该 exe 同目录（或 `dist\uxplay` 子目录）即可分发使用。
 
 > 说明：PyQt6 的钩子已内置于 PyInstaller；spec 中显式列出了 Qt 模块的
@@ -124,7 +124,7 @@ pyinstaller --clean --noconfirm AirMirror.spec
 | 常规 | 关闭时最小化到托盘 | 开启后 Alt+F4 隐藏到托盘而不退出（默认关闭） |
 | 常规 | 连接提示音 | 客户端连上时播放系统提示音 |
 
-设置文件：`%APPDATA%\AirMirror\config.json`（手动编辑亦可，重启程序生效）。
+设置文件：`%APPDATA%\Airflow\config.json`（手动编辑亦可，重启程序生效）。
 
 ## 配置（环境变量）
 
@@ -175,11 +175,11 @@ AirPlay 镜像协议是**单向**的：视频/音频从发送端流到接收端�
   找不到，说明 exe 被安全软件拦截了解压（PyInstaller 单文件机制），可把 uxplay 放到
   exe 同目录的 `uxplay` 子目录绕过。
 - **uxplay 启动后立刻退出（代码非 0）**：多半是 Bonjour/mDNS 未就绪或参数不受支持；
-  可查看日志 `%TEMP%\AirMirror.log` 中的 `uxplay: ...` 输出定位原因。
+  可查看日志 `%TEMP%\Airflow.log` 中的 `uxplay: ...` 输出定位原因。
 - **内嵌后黑屏 / 花屏**：视频窗口重挂载失败，改用 `--standalone` 模式（uxplay 自带全屏窗口）。
 - **iPad 搜不到设备**：确认 PC 与 iPad 同一局域网、防火墙已放行 uxplay，
   以及 Bonjour Service（或 uxplay 自带的 mDNSResponder）正在运行。
-- **日志位置**：`%TEMP%\AirMirror.log`，退出前会自动记录 uxplay 的清理过程。
+- **日志位置**：`%TEMP%\Airflow.log`，退出前会自动记录 uxplay 的清理过程。
 
 ## 第三方组件与许可
 

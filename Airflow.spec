@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
-# PyInstaller 单文件打包配置（AirMirror）
-# 用法: pyinstaller --clean --noconfirm AirMirror.spec
-# 产物: dist\AirMirror.exe
+# PyInstaller 单文件打包配置（Airflow）
+# 用法: pyinstaller --clean --noconfirm Airflow.spec
+# 产物: dist\Airflow.exe
 
 a = Analysis(
     ['main.py'],
@@ -26,7 +26,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='AirMirror',
+    name='Airflow',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

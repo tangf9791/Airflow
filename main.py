@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""AirMirror —— Windows AirPlay 镜像接收器（iPad 投屏接收端）。
+"""Airflow —— Windows AirPlay 镜像接收器（iPad 投屏接收端）。
 
 核心机制：
   * 启动时在后台拉起开源 uxplay.exe（子进程），接收 iPad 的 AirPlay 镜像；
@@ -42,8 +42,8 @@ from PyQt6.QtWidgets import (
 from config import APP_NAME, Settings, load_settings, save_settings, set_autostart
 from settings_dialog import SettingsDialog
 
-APP_VERSION = "2.3.1"
-LOG_FILE = Path(tempfile.gettempdir()) / "AirMirror.log"
+APP_VERSION = "2.4.0"
+LOG_FILE = Path(tempfile.gettempdir()) / "Airflow.log"
 
 VK_F1 = 0x70
 VK_F2 = 0x71

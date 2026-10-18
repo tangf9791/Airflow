@@ -11,7 +11,7 @@ import winreg
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
-APP_NAME = "AirMirror"
+APP_NAME = "Airflow"  # 应用名（窗口标题、配置目录、注册表自启项均使用）
 CONFIG_DIR = Path(os.environ.get("APPDATA", str(Path.home()))) / APP_NAME
 CONFIG_FILE = CONFIG_DIR / "config.json"
 
@@ -69,7 +69,7 @@ _VALID = {
 
 @dataclass
 class Settings:
-    r"""程序设置（持久化到 %APPDATA%\AirMirror\config.json）。"""
+    r"""程序设置（持久化到 %APPDATA%\Airflow\config.json）。"""
 
     device_name: str = "iPad-Screen"
     video_size: str = "auto"           # auto | 1280x720 | 1920x1080 | 2560x1440 | 3840x2160
@@ -116,31 +116,35 @@ class Settings:
         return args
 
 
-_OLD_APP_NAME = "iPadScreenReceiver"  # 旧版应用名（迁移用）
+_OLD_APP_NAMES = ("iPadScreenReceiver", "AirMirror")  # 历史应用名（迁移用）
 
 
 def _migrate_old_config() -> None:
-    r"""首次运行新版时，把旧版 %APPDATA%\iPadScreenReceiver\config.json 迁移过来。"""
+    r"""首次运行 Airflow 时，把历史版本（iPadScreenReceiver / AirMirror）的 config.json 迁移过来。"""
     if CONFIG_FILE.exists():
         return
-    old = Path(os.environ.get("APPDATA", str(Path.home()))) / _OLD_APP_NAME / "config.json"
-    if old.exists():
-        try:
-            CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(old, CONFIG_FILE)
-        except OSError:
-            pass
+    appdata = Path(os.environ.get("APPDATA", str(Path.home())))
+    for old_name in _OLD_APP_NAMES:
+        old = appdata / old_name / "config.json"
+        if old.exists():
+            try:
+                CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(old, CONFIG_FILE)
+            except OSError:
+                pass
+            return
 
 
 def _cleanup_old_autostart() -> None:
-    """删除旧版应用名的开机自启注册表项（如果存在）。"""
+    """删除历史应用名的开机自启注册表项（如果存在）。"""
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY_PATH, 0,
                             winreg.KEY_SET_VALUE) as key:
-            try:
-                winreg.DeleteValue(key, _OLD_APP_NAME)
-            except FileNotFoundError:
-                pass
+            for old_name in _OLD_APP_NAMES:
+                try:
+                    winreg.DeleteValue(key, old_name)
+                except FileNotFoundError:
+                    pass
     except OSError:
         pass
 
