@@ -131,6 +131,30 @@ def mac_client_text() -> str | None:
         return None
 
 
+MAC_INSTALL_NAME = "install.sh"
+
+
+def mac_install_text() -> str | None:
+    """返回已填入本机 IP 的终端安装脚本（mac/install.sh）。"""
+    app_dir = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).parent
+    meipass = Path(getattr(sys, "_MEIPASS", app_dir))
+    tpl = None
+    for base in (app_dir, meipass, Path.cwd()):
+        p = base / "mac" / MAC_INSTALL_NAME
+        if p.is_file():
+            tpl = p
+            break
+    if tpl is None:
+        return None
+    ip = local_ip()
+    if not ip:
+        return None
+    try:
+        return tpl.read_text(encoding="utf-8").replace(PC_IP_PLACEHOLDER, ip)
+    except OSError:
+        return None
+
+
 def generate_mac_client(target: Path) -> tuple[bool, str]:
     """把模板里的 PC IP 替换成本机当前 IP，写到 target。"""
     tpl = mac_template_path()

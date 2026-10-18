@@ -45,7 +45,7 @@ from kvm import extract_portable, portable_dir, resolve_deskflow
 from lanshare import LanShare
 from settings_dialog import SettingsDialog
 
-APP_VERSION = "2.7.2"
+APP_VERSION = "2.7.3"
 LOG_FILE = Path(tempfile.gettempdir()) / "Airflow.log"
 
 VK_F1 = 0x70
