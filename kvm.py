@@ -91,6 +91,15 @@ def resolve_deskflow(configured: str = "") -> tuple[Path | None, str]:
 # ================= Mac 客户端一键脚本 =================
 MAC_TEMPLATE_NAME = "airflow-mac-client.command"
 PC_IP_PLACEHOLDER = "__AIRFLOW_PC_IP__"
+# 只替换赋值行，保留脚本里的占位符判断（否则判断行也会被替换，导致永远提示输入）
+PC_IP_ASSIGN = 'PC_IP="' + PC_IP_PLACEHOLDER + '"'
+
+
+def _fill_pc_ip(text: str) -> str:
+    ip = local_ip()
+    if not ip:
+        return text
+    return text.replace(PC_IP_ASSIGN, 'PC_IP="' + ip + '"')
 
 
 def local_ip() -> str:
@@ -126,9 +135,12 @@ def mac_client_text() -> str | None:
     if not ip:
         return None
     try:
-        return tpl.read_text(encoding="utf-8").replace(PC_IP_PLACEHOLDER, ip)
+        text = tpl.read_text(encoding="utf-8")
     except OSError:
         return None
+    if not ip:
+        return None
+    return _fill_pc_ip(text)
 
 
 MAC_INSTALL_NAME = "install.sh"
@@ -146,13 +158,13 @@ def mac_install_text() -> str | None:
             break
     if tpl is None:
         return None
-    ip = local_ip()
-    if not ip:
-        return None
     try:
-        return tpl.read_text(encoding="utf-8").replace(PC_IP_PLACEHOLDER, ip)
+        text = tpl.read_text(encoding="utf-8")
     except OSError:
         return None
+    if local_ip() == "":
+        return None
+    return _fill_pc_ip(text)
 
 
 def generate_mac_client(target: Path) -> tuple[bool, str]:
@@ -167,7 +179,7 @@ def generate_mac_client(target: Path) -> tuple[bool, str]:
         text = tpl.read_text(encoding="utf-8")
     except OSError as exc:
         return False, f"读取模板失败：{exc}"
-    text = text.replace(PC_IP_PLACEHOLDER, ip)
+    text = _fill_pc_ip(text)
     try:
         target.write_text(text, encoding="utf-8", newline="\n")
     except OSError as exc:

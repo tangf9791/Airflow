@@ -16,7 +16,12 @@ die() { printf "\033[1;31m[Airflow]\033[0m %s\n" "$1" >&2; exit 1; }
 
 if [ -z "$PC_IP" ] || [ "$PC_IP" = "__AIRFLOW_PC_IP__" ]; then
   printf "请输入 Windows 电脑的局域网 IP："
-  read -r PC_IP
+  if [ -t 0 ]; then
+    read -r PC_IP
+  else
+    # curl | bash 模式下 stdin 是脚本本身，必须从终端读
+    read -r PC_IP < /dev/tty || die "无法读取输入；请改用局域网页面提供的完整命令。"
+  fi
 fi
 [ -n "$PC_IP" ] || die "没有填写 IP，退出。"
 
