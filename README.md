@@ -8,7 +8,7 @@
 
 ## 下载使用（推荐）
 
-1. 打开 [Releases](../../releases) 下载最新的 `AirMirror.exe`（单文件，已内置 uxplay，无需安装 Python）；
+1. 打开 [Releases](https://github.com/tangf9791/AirMirror/releases) 下载最新的 `AirMirror.exe`（单文件，已内置 uxplay，无需安装 Python）；
 2. 如果电脑没装过 Bonjour，先装 [Bonjour Print Services](https://support.apple.com/downloads/bonjour-print-services-for-windows)
    （或运行 `uxplay/1-安装Bonjour.bat`）；
 3. 双击运行，在 iPad / Mac 上打开“屏幕镜像”，选择 **iPad-Screen** 即可。
@@ -88,7 +88,7 @@ python -m pip install -r requirements-build.txt
 pyinstaller --clean --noconfirm AirMirror.spec
 ```
 
-产物：`dist\AirMirror.exe`（单文件，约 30~40 MB，无控制台窗口）。
+产物：`dist\AirMirror.exe`（单文件，约 240 MB，无控制台窗口，已内置 uxplay 运行环境）。
 把 `uxplay.exe` 放到该 exe 同目录（或 `dist\uxplay` 子目录）即可分发使用。
 
 > 说明：PyQt6 的钩子已内置于 PyInstaller；spec 中显式列出了 Qt 模块的
