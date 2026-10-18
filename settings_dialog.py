@@ -3,11 +3,11 @@
 
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QProcess, Qt
 from PyQt6.QtGui import QGuiApplication
 from PyQt6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout,
-    QLabel, QLineEdit, QPushButton, QTabWidget, QVBoxLayout, QWidget,
+    QLabel, QLineEdit, QMessageBox, QPushButton, QTabWidget, QVBoxLayout, QWidget,
 )
 
 from config import (
@@ -47,6 +47,8 @@ class SettingsDialog(QDialog):
         self.setModal(True)
         self.setMinimumWidth(520)
         self.setStyleSheet(_DARK_QSS)
+        self._settings = settings
+        self._deskflow_path = settings.deskflow_path
 
         tabs = QTabWidget(self)
 
@@ -184,6 +186,44 @@ class SettingsDialog(QDialog):
         dform.addRow("", self.cursor_check)
         dform.addRow("", self.overlay_check)
 
+        # ---------------- 键盘共享 ----------------
+        kvm_tab = QWidget()
+        kform = QFormLayout(kvm_tab)
+        kform.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
+
+        self.kvm_check = QCheckBox("启用键盘共享（随本程序启动 Deskflow，退出时关闭）")
+        self.kvm_check.setChecked(settings.kvm_enabled)
+        self.kvm_check.setToolTip(
+            "Deskflow 是开源 KVM：用一套键盘鼠标控制多台电脑。\n"
+            "启用后本程序会自动启动它，退出时一并关闭。")
+
+        self.kvm_status = QLabel(self._deskflow_status(settings))
+        self.kvm_status.setWordWrap(True)
+        self.kvm_status.setStyleSheet("color:#9a9a9a; font-size:12px;")
+
+        kvm_btn_row = QHBoxLayout()
+        open_btn = QPushButton("打开 Deskflow 界面")
+        open_btn.clicked.connect(self._open_deskflow)
+        reextract_btn = QPushButton("重新解压内置版")
+        reextract_btn.clicked.connect(self._reextract_deskflow)
+        kvm_btn_row.addWidget(open_btn)
+        kvm_btn_row.addWidget(reextract_btn)
+        kvm_btn_row.addStretch(1)
+
+        kvm_help = QLabel(
+            "使用步骤：\n"
+            "1. 点「打开 Deskflow 界面」，本机模式选 Server，把 Mac 添加为一台屏幕（放在本机右侧）；\n"
+            "2. Mac 上安装 Deskflow 客户端，填写本机局域网 IP、端口 24800，连接；\n"
+            "3. 之后把鼠标移到屏幕右边缘，键盘/鼠标就切换到了 Mac；按 Scroll Lock 可锁定在当前电脑。\n\n"
+            "注意：Mac 端首次使用需在「系统设置 → 隐私与安全性 → 辅助功能」里勾选 Deskflow。")
+        kvm_help.setWordWrap(True)
+        kvm_help.setStyleSheet("color:#bbb; font-size:12px;")
+
+        kform.addRow("", self.kvm_check)
+        kform.addRow("", self.kvm_status)
+        kform.addRow("", kvm_btn_row)
+        kform.addRow("", kvm_help)
+
         # ---------------- 常规 ----------------
         general_tab = QWidget()
         gform = QFormLayout(general_tab)
@@ -232,6 +272,7 @@ class SettingsDialog(QDialog):
 
         tabs.addTab(video_tab, "视频")
         tabs.addTab(display_tab, "显示")
+        tabs.addTab(kvm_tab, "键盘共享")
         tabs.addTab(general_tab, "常规")
 
         # ---------------- 按钮 ----------------
@@ -260,6 +301,40 @@ class SettingsDialog(QDialog):
     def _on_mode_changed(self, _idx: int) -> None:
         self.top_check.setEnabled(self.mode_combo.currentData() == "windowed")
 
+    @staticmethod
+    def _deskflow_status(settings: Settings) -> str:
+        from kvm import find_bundle_zip, installed_exe, portable_exe
+        if installed_exe() is not None:
+            return f"Deskflow：系统已安装（{installed_exe()}）"
+        if portable_exe() is not None:
+            return f"Deskflow：内置便携版已就绪（{portable_exe().parent}）"
+        if find_bundle_zip() is not None:
+            return ("Deskflow：内置便携版（首次启用时自动解压到 "
+                    "%APPDATA%\\Airflow\\deskflow）")
+        return "Deskflow：未找到（可手动安装后在 config.json 里设置 deskflow_path）"
+
+    def _open_deskflow(self) -> None:
+        from kvm import resolve_deskflow
+        exe, _source = resolve_deskflow(self._settings.deskflow_path)
+        if exe is None:
+            QMessageBox.warning(self, "Deskflow",
+                                "未找到 Deskflow，请确认安装包完整或手动安装。")
+            return
+        QProcess.startDetached(str(exe), [], str(exe.parent))
+
+    def _reextract_deskflow(self) -> None:
+        import shutil
+        from kvm import extract_portable, portable_dir
+        try:
+            if portable_dir().exists():
+                shutil.rmtree(portable_dir())
+        except OSError:
+            pass
+        exe = extract_portable()
+        self.kvm_status.setText(self._deskflow_status(self._settings))
+        if exe is None:
+            QMessageBox.warning(self, "Deskflow", "解压失败，请检查安装包。")
+
     def _reset_defaults(self) -> None:
         d = Settings()
         self.size_combo.setCurrentIndex(self.size_combo.findData(d.video_size))
@@ -284,6 +359,7 @@ class SettingsDialog(QDialog):
         self.tray_check.setChecked(d.tray_enabled)
         self.minimize_check.setChecked(d.minimize_to_tray)
         self.sound_check.setChecked(d.connect_sound)
+        self.kvm_check.setChecked(d.kvm_enabled)
 
     def result_settings(self) -> Settings:
         """读取对话框当前值（供保存/应用）。"""
@@ -310,4 +386,6 @@ class SettingsDialog(QDialog):
         s.tray_enabled = self.tray_check.isChecked()
         s.minimize_to_tray = self.minimize_check.isChecked()
         s.connect_sound = self.sound_check.isChecked()
+        s.kvm_enabled = self.kvm_check.isChecked()
+        s.deskflow_path = self._deskflow_path
         return s

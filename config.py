@@ -94,6 +94,8 @@ class Settings:
     ipad_mode: str = "fullscreen"      # iPad 连接时的呈现方式：fullscreen | native
     mac_mode: str = "native"           # Mac 连接时的呈现方式：fullscreen | native
     ask_on_connect: bool = False       # 客户端连接时弹出快速选择窗口
+    kvm_enabled: bool = False          # 随程序启动 Deskflow 键盘共享
+    deskflow_path: str = ""            # Deskflow 可执行文件路径（空=自动检测/内置）
 
     def uxplay_args(self) -> list[str]:
         """把设置翻译成 uxplay 命令行参数。"""

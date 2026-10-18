@@ -9,7 +9,7 @@ a = Analysis(
     binaries=[],
     # 把整个 uxplay 目录（含 bin/lib/libexec/share 运行时树）内置进单文件 exe，
     # 运行时从 sys._MEIPASS 临时解压目录解析；exe 同目录的外部 uxplay\ 仍可覆盖。
-    datas=[('uxplay', 'uxplay'), ('app_icon.ico', '.')],
+    datas=[('uxplay', 'uxplay'), ('app_icon.ico', '.'), ('deskflow-portable.zip', '.')],
     hiddenimports=['PyQt6.QtCore', 'PyQt6.QtGui', 'PyQt6.QtWidgets'],
     hookspath=[],
     hooksconfig={},

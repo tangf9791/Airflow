@@ -24,6 +24,7 @@ import ctypes
 import os
 import re
 import shlex
+import subprocess
 import shutil
 import sys
 import tempfile
@@ -40,9 +41,10 @@ from PyQt6.QtWidgets import (
 )
 
 from config import APP_NAME, Settings, load_settings, save_settings, set_autostart
+from kvm import extract_portable, portable_dir, resolve_deskflow
 from settings_dialog import SettingsDialog
 
-APP_VERSION = "2.4.0"
+APP_VERSION = "2.5.0"
 LOG_FILE = Path(tempfile.gettempdir()) / "Airflow.log"
 
 VK_F1 = 0x70
@@ -118,9 +120,57 @@ def set_prevent_sleep(enabled: bool) -> bool:
     return ok
 
 
+# ================= Apple Bonjour 自动安装 =================
+def bonjour_installed() -> bool:
+    """检查 Bonjour 服务是否已安装。"""
+    try:
+        res = subprocess.run(
+            ["sc", "query", "Bonjour Service"],
+            capture_output=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        return res.returncode == 0
+    except OSError:
+        return False
+
+
+def find_bonjour_msi() -> Path | None:
+    app_dir = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).parent
+    meipass = Path(getattr(sys, "_MEIPASS", app_dir))
+    for base in (app_dir, meipass, Path.cwd()):
+        p = base / "uxplay" / "third_party" / "Bonjour64.msi"
+        if p.is_file():
+            return p
+    return None
+
+
+def install_bonjour() -> bool:
+    """自动安装 Apple Bonjour（申请管理员权限，静默安装并等待完成）。"""
+    msi = find_bonjour_msi()
+    if msi is None:
+        log("bonjour: installer not found")
+        return False
+    log(f"bonjour: installing from {msi}")
+    args = f'/i "{msi}" /passive /norestart'
+    rc = shell32.ShellExecuteW(None, "runas", "msiexec.exe", args, None, 1)
+    if rc <= 32:
+        log(f"bonjour: launch failed rc={rc}（用户取消或权限不足）")
+        return False
+    deadline = time.monotonic() + 240
+    while time.monotonic() < deadline:
+        if bonjour_installed():
+            log("bonjour: installed")
+            return True
+        QApplication.processEvents()
+        time.sleep(0.5)
+    log("bonjour: install timeout")
+    return bonjour_installed()
+
+
 # ================= Win32 辅助 =================
 user32 = ctypes.windll.user32
 kernel32 = ctypes.windll.kernel32
+shell32 = ctypes.windll.shell32
 
 # 熄屏/休眠抑制（见 set_prevent_sleep）
 kernel32.SetThreadExecutionState.argtypes = [ctypes.c_uint]
@@ -165,6 +215,9 @@ user32.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, w
 user32.PostMessageW.restype = wintypes.BOOL
 user32.GetForegroundWindow.argtypes = []
 user32.GetForegroundWindow.restype = wintypes.HWND
+shell32.ShellExecuteW.argtypes = [wintypes.HWND, wintypes.LPCWSTR, wintypes.LPCWSTR,
+                                  wintypes.LPCWSTR, wintypes.LPCWSTR, ctypes.c_int]
+shell32.ShellExecuteW.restype = ctypes.c_void_p
 user32.GetCursorPos.argtypes = [ctypes.POINTER(wintypes.POINT)]
 user32.GetCursorPos.restype = wintypes.BOOL
 user32.SetCursor.argtypes = [ctypes.c_void_p]
@@ -488,6 +541,8 @@ class ReceiverWindow(QWidget):
         self._active_present = "fullscreen"
         self._present_requested = False
         self._chooser = None
+        self._kvm_proc: QProcess | None = None
+        self._bonjour_ok = True
         self._tray: QSystemTrayIcon | None = None
         self._cursor_hidden = False
         self._last_cursor: tuple[int, int] | None = None
@@ -544,10 +599,13 @@ class ReceiverWindow(QWidget):
         self._setup_tray()
         self._overlay_timer.start()
         self._cursor_timer.start()
+        if not self._no_uxplay:
+            self._ensure_bonjour()
         if self._no_uxplay:
             self._status.setText("测试模式：已跳过 uxplay 启动\n\n按 ESC 或 Q 退出")
             return
         self._launch_uxplay()
+        self._start_kvm()
 
     def _target_screen(self):
         """按设置返回全屏使用的显示器（越界时回退主显示器）。"""
@@ -587,6 +645,49 @@ class ReceiverWindow(QWidget):
             return shlex.split(raw)  # 完全自定义（调试用）
         return self._settings.uxplay_args()
 
+    # ---------- Bonjour / 键盘共享 ----------
+    def _ensure_bonjour(self) -> None:
+        """确保 Apple Bonjour 可用（缺失时自动安装）。"""
+        self._bonjour_ok = bonjour_installed()
+        if self._bonjour_ok:
+            log("bonjour: installed")
+            return
+        log("bonjour: not installed, auto-installing")
+        self._status.setText(
+            "首次运行：正在自动安装 Apple Bonjour…\n"
+            "如弹出「用户账户控制」，请点击「是」。\n"
+            "安装完成后会自动继续，无需操作。")
+        QApplication.processEvents()
+        self._bonjour_ok = install_bonjour()
+        log(f"bonjour: auto-install ok={self._bonjour_ok}")
+
+    def _start_kvm(self) -> None:
+        """按设置启动 Deskflow（键盘共享）。"""
+        if not self._settings.kvm_enabled:
+            return
+        if (self._kvm_proc is not None
+                and self._kvm_proc.state() != QProcess.ProcessState.NotRunning):
+            return
+        exe, source = resolve_deskflow(self._settings.deskflow_path)
+        if exe is None:
+            log("kvm: deskflow not found")
+            return
+        log(f"kvm: starting deskflow ({source}) {exe}")
+        self._kvm_proc = QProcess(self)
+        self._kvm_proc.setProgram(str(exe))
+        self._kvm_proc.setWorkingDirectory(str(exe.parent))
+        self._kvm_proc.start()
+
+    def _stop_kvm(self) -> None:
+        proc = self._kvm_proc
+        if proc is not None and proc.state() != QProcess.ProcessState.NotRunning:
+            log("kvm: stopping deskflow")
+            proc.terminate()
+            if not proc.waitForFinished(3000):
+                proc.kill()
+                proc.waitForFinished(1500)
+        self._kvm_proc = None
+
     def _launch_uxplay(self) -> None:
         exe = resolve_uxplay()
         if exe is None:
@@ -622,8 +723,9 @@ class ReceiverWindow(QWidget):
         if self._chooser is not None:
             self._chooser.hide()
 
+        warn = "" if self._bonjour_ok else "\n⚠ Apple Bonjour 未就绪，iPad 可能搜不到本机"
         self._status.setText(
-            f"等待 iPad 投屏连接…\n设备名：{self._settings.device_name}\n\n"
+            f"等待 iPad 投屏连接…{warn}\n设备名：{self._settings.device_name}\n\n"
             f"按 F1 设置 · F5 重启投屏 · 按 ESC 或 Q 退出"
         )
         if self._settings.standalone:
@@ -705,6 +807,11 @@ class ReceiverWindow(QWidget):
                         self._tray.hide()
                         self._tray = None
                         log("tray icon removed")
+                if old.kvm_enabled != new.kvm_enabled:
+                    if new.kvm_enabled:
+                        self._start_kvm()
+                    else:
+                        self._stop_kvm()
                 self._apply_display_mode()
                 self._update_overlay()
                 if old.ipad_mode != new.ipad_mode or old.mac_mode != new.mac_mode:
@@ -1066,6 +1173,7 @@ class ReceiverWindow(QWidget):
         self._save_window_rect()
         if self._hook:
             self._hook.uninstall()
+        self._stop_kvm()
         self._stop_uxplay()
         set_prevent_sleep(False)  # 释放熄屏/休眠抑制
         log("shutdown complete")

@@ -1,5 +1,11 @@
 # 更新日志
 
+## v2.5.0
+
+- 新增：键盘共享（KVM）——内置 Deskflow，一套键鼠控制 PC 和 Mac
+- 新增：Apple Bonjour 自动安装（首次运行静默安装，无需手动操作）
+- 变更：图标改为「气流」风格；README 重写为“下载即用”，技术细节移至 DEVELOPING.md
+
 ## v2.4.0
 
 - 更名：AirMirror → Airflow（避免与同名商业产品混淆）
