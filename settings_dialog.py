@@ -228,11 +228,13 @@ class SettingsDialog(QDialog):
 
         self.lan_check = QCheckBox("局域网分享（Mac 用浏览器打开网址即可下载客户端）")
         self.lan_check.setChecked(settings.lan_share)
+        self.lan_check.setEnabled(settings.kvm_enabled)
         self.lan_check.setToolTip(
-            "开启后本机会在局域网上提供一个只读下载页；\n"
-            "Mac 浏览器打开显示的网址即可下载客户端脚本。")
+            "仅在启用「键盘共享」时可用：本机会提供一个只读下载页，\n"
+            "Mac 浏览器打开网址即可下载客户端脚本。")
+        self.kvm_check.toggled.connect(self.lan_check.setEnabled)
 
-        self.lan_url = QLabel(lan_url or "保存后生效：主界面会显示下载网址，按 F3 或点「复制下载链接」即可复制")
+        self.lan_url = QLabel(lan_url or "启用键盘共享后生效：主界面会显示下载网址，按 F3 可复制")
         self.lan_url.setStyleSheet("color:#7dd3fc; font-size:12px;")
         self.lan_url.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.lan_url.setWordWrap(True)

@@ -45,7 +45,7 @@ from kvm import extract_portable, portable_dir, resolve_deskflow
 from lanshare import LanShare
 from settings_dialog import SettingsDialog
 
-APP_VERSION = "2.7.1"
+APP_VERSION = "2.7.2"
 LOG_FILE = Path(tempfile.gettempdir()) / "Airflow.log"
 
 VK_F1 = 0x70
@@ -694,7 +694,11 @@ class ReceiverWindow(QWidget):
         log(f"bonjour: auto-install ok={self._bonjour_ok}")
 
     def _ensure_lan_share(self) -> None:
-        if not self._settings.lan_share:
+        """局域网分享只在“键盘共享 + 局域网分享”都开启时提供。"""
+        if not (self._settings.kvm_enabled and self._settings.lan_share):
+            if self._lan.running:
+                self._lan.stop()
+                log("lan share stopped (kvm/lan disabled)")
             return
         ok, msg = self._lan.start()
         log(f"lan share: {msg if ok else 'failed: ' + msg}")
@@ -857,12 +861,8 @@ class ReceiverWindow(QWidget):
                         self._start_kvm()
                     else:
                         self._stop_kvm()
-                if old.lan_share != new.lan_share:
-                    if new.lan_share:
-                        self._ensure_lan_share()
-                    else:
-                        self._lan.stop()
-                        log("lan share stopped")
+                if old.lan_share != new.lan_share or old.kvm_enabled != new.kvm_enabled:
+                    self._ensure_lan_share()
                 self._update_lan_ui()
                 self._status.setText(
                     f"等待 iPad 投屏连接…\n"
@@ -1153,7 +1153,8 @@ class ReceiverWindow(QWidget):
             self._show_from_tray()
 
     def _update_lan_ui(self) -> None:
-        if self._lan.running and not self._shutting_down:
+        enabled = self._settings.kvm_enabled and self._settings.lan_share
+        if enabled and self._lan.running and not self._shutting_down:
             url = self._lan.url()
             self._lan_label.setText(
                 f"Mac 客户端下载：{url}\n"
