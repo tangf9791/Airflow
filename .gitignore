@@ -1,0 +1,16 @@
+# 构建产物
+build/
+dist/
+__pycache__/
+*.pyc
+*.spec.bak
+
+# 运行时依赖（体积大，不进仓库；用 download_uxplay.ps1 获取）
+uxplay/
+uxplay_src/
+
+# 本地测试/临时文件
+/*.exe
+*.log
+*.png
+!app_icon.png

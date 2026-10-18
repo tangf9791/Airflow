@@ -1,0 +1,313 @@
+# -*- coding: utf-8 -*-
+"""设置对话框：视频（尺寸/画质/帧率/音频/翻转）、显示（模式/显示器/角标）、常规。"""
+
+from __future__ import annotations
+
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QGuiApplication
+from PyQt6.QtWidgets import (
+    QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout,
+    QLabel, QLineEdit, QPushButton, QTabWidget, QVBoxLayout, QWidget,
+)
+
+from config import (
+    APP_NAME, DISPLAY_MODES, FLIP_MODES, FPS_OPTIONS, PRESENT_MODES,
+    ROTATE_MODES, VIDEO_QUALITIES, VIDEO_SIZES, Settings,
+)
+
+_DARK_QSS = """
+QDialog { background-color: #202020; color: #e0e0e0; }
+QLabel { color: #e0e0e0; }
+QLineEdit, QComboBox {
+    background-color: #2d2d2d; color: #e0e0e0; border: 1px solid #444;
+    border-radius: 4px; padding: 4px 6px; min-height: 20px;
+}
+QComboBox QAbstractItemView {
+    background-color: #2d2d2d; color: #e0e0e0; selection-background-color: #3d5afe;
+}
+QCheckBox { color: #e0e0e0; spacing: 6px; }
+QTabWidget::pane { border: 1px solid #3a3a3a; }
+QTabBar::tab { background: #2a2a2a; color: #c0c0c0; padding: 6px 16px; border: 1px solid #3a3a3a; }
+QTabBar::tab:selected { background: #3d5afe; color: white; }
+QPushButton {
+    background-color: #3a3a3a; color: #e0e0e0; border: 1px solid #555;
+    border-radius: 4px; padding: 5px 14px;
+}
+QPushButton:hover { background-color: #4a4a4a; }
+QPushButton:default { background-color: #3d5afe; border: none; }
+QToolTip { background-color: #2d2d2d; color: #e0e0e0; border: 1px solid #555; }
+"""
+
+
+class SettingsDialog(QDialog):
+    def __init__(self, settings: Settings, parent=None, *, version: str = "",
+                 uxplay_path: str = "", log_file: str = ""):
+        super().__init__(parent)
+        self.setWindowTitle(f"{APP_NAME} · 设置")
+        self.setModal(True)
+        self.setMinimumWidth(520)
+        self.setStyleSheet(_DARK_QSS)
+
+        tabs = QTabWidget(self)
+
+        # ---------------- 视频 ----------------
+        video_tab = QWidget()
+        vform = QFormLayout(video_tab)
+        vform.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
+
+        self.size_combo = QComboBox()
+        for label, val in VIDEO_SIZES:
+            self.size_combo.addItem(label, val)
+        idx = self.size_combo.findData(settings.video_size)
+        self.size_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        self.size_combo.setToolTip(
+            "向 iPad 请求的分辨率（AirPlay 实际画质仍由 iPad 决定）；\n"
+            "4K 需要配合“高”画质（H.265）。")
+        self.size_combo.currentIndexChanged.connect(self._on_size_changed)
+
+        self.quality_combo = QComboBox()
+        for label, val in VIDEO_QUALITIES:
+            self.quality_combo.addItem(label, val)
+        idx = self.quality_combo.findData(settings.video_quality)
+        self.quality_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        self.quality_combo.setToolTip(
+            "高 = 启用 H.265 支持，可接收 4K 与更高画质（要求 iPad 支持）。")
+
+        self.fps_combo = QComboBox()
+        for label, val in FPS_OPTIONS:
+            self.fps_combo.addItem(label, val)
+        idx = self.fps_combo.findData(settings.fps)
+        self.fps_combo.setCurrentIndex(idx if idx >= 0 else 1)
+        self.fps_combo.setToolTip("最大帧率；越高越流畅，但更占用带宽与 CPU。")
+
+        self.audio_check = QCheckBox("传输音频（声音同步到本机）")
+        self.audio_check.setChecked(settings.audio_enabled)
+        self.audio_check.setToolTip("关闭后给 uxplay 传 -as 0，仅接收画面。")
+
+        self.flip_combo = QComboBox()
+        for label, val in FLIP_MODES:
+            self.flip_combo.addItem(label, val)
+        idx = self.flip_combo.findData(settings.flip_mode)
+        self.flip_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        self.flip_combo.setToolTip("画面翻转：水平 / 垂直 / 旋转 180°（-f H|V|I）。")
+
+        self.rotate_combo = QComboBox()
+        for label, val in ROTATE_MODES:
+            self.rotate_combo.addItem(label, val)
+        idx = self.rotate_combo.findData(settings.rotate_mode)
+        self.rotate_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        self.rotate_combo.setToolTip("画面旋转 90°（-r R|L）。")
+
+        vform.addRow("视频尺寸：", self.size_combo)
+        vform.addRow("视频画质：", self.quality_combo)
+        vform.addRow("帧率：", self.fps_combo)
+        vform.addRow("", self.audio_check)
+        vform.addRow("翻转：", self.flip_combo)
+        vform.addRow("旋转：", self.rotate_combo)
+        hint = QLabel("修改视频设置后会重启投屏服务")
+        hint.setStyleSheet("color:#888; font-size:12px;")
+        vform.addRow("", hint)
+
+        # ---------------- 显示 ----------------
+        display_tab = QWidget()
+        dform = QFormLayout(display_tab)
+        dform.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
+
+        self.mode_combo = QComboBox()
+        for label, val in DISPLAY_MODES:
+            self.mode_combo.addItem(label, val)
+        idx = self.mode_combo.findData(settings.display_mode)
+        self.mode_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        self.mode_combo.setToolTip("全屏：无边框置顶铺满屏幕；窗口：普通可调整大小的窗口。")
+        self.mode_combo.currentIndexChanged.connect(self._on_mode_changed)
+
+        self.monitor_combo = QComboBox()
+        self._screens = QGuiApplication.screens()
+        for i, scr in enumerate(self._screens):
+            g = scr.geometry()
+            label = f"显示器 {i + 1}（{g.width()} × {g.height()}）"
+            if i == 0:
+                label += " · 主显示器"
+            self.monitor_combo.addItem(label, i)
+        idx = self.monitor_combo.findData(settings.monitor_index)
+        self.monitor_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        self.monitor_combo.setToolTip("全屏时使用哪块显示器。")
+
+        self.top_check = QCheckBox("窗口总在最前")
+        self.top_check.setChecked(settings.always_on_top)
+        self.top_check.setEnabled(settings.display_mode == "windowed")
+
+        self.remember_check = QCheckBox("记住窗口模式的位置和大小")
+        self.remember_check.setChecked(settings.remember_window)
+
+        self.standalone_check = QCheckBox("使用 uxplay 自带全屏窗口（独立模式）")
+        self.standalone_check.setChecked(settings.standalone)
+        self.standalone_check.setToolTip(
+            "此时本程序窗口隐藏，仅负责全局热键与进程清理；\n"
+            "等价于 uxplay -n \"iPad-Screen\" -fs -fps 60 -vsync no。")
+
+        self.ipad_mode_combo = QComboBox()
+        for label, val in PRESENT_MODES:
+            self.ipad_mode_combo.addItem(label, val)
+        idx = self.ipad_mode_combo.findData(settings.ipad_mode)
+        self.ipad_mode_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        self.ipad_mode_combo.setToolTip(
+            "iPad 投屏进来时，PC 端如何显示收到的画面。\n"
+            "镜像/扩展的选择在 iPad/Mac 端，这里只决定 PC 端的呈现方式。")
+
+        self.mac_mode_combo = QComboBox()
+        for label, val in PRESENT_MODES:
+            self.mac_mode_combo.addItem(label, val)
+        idx = self.mac_mode_combo.findData(settings.mac_mode)
+        self.mac_mode_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        self.mac_mode_combo.setToolTip(
+            "Mac 端在 AirPlay 菜单/显示器设置里选「用作单独的显示器」即为扩展屏；\n"
+            "扩展屏模式 = 按来流分辨率居中显示、不拉伸，像一块真实显示器。")
+
+        self.ask_check = QCheckBox("客户端连接时弹出快速选择窗口")
+        self.ask_check.setChecked(settings.ask_on_connect)
+
+        self.cursor_check = QCheckBox("全屏时闲置自动隐藏鼠标指针")
+        self.cursor_check.setChecked(settings.hide_cursor)
+
+        self.overlay_check = QCheckBox("显示投屏状态角标（角落小字）")
+        self.overlay_check.setChecked(settings.status_overlay)
+
+        dform.addRow("显示模式：", self.mode_combo)
+        dform.addRow("显示器：", self.monitor_combo)
+        dform.addRow("", self.top_check)
+        dform.addRow("", self.remember_check)
+        dform.addRow("", self.standalone_check)
+        dform.addRow("iPad 画面呈现：", self.ipad_mode_combo)
+        dform.addRow("Mac 画面呈现：", self.mac_mode_combo)
+        dform.addRow("", self.ask_check)
+        dform.addRow("", self.cursor_check)
+        dform.addRow("", self.overlay_check)
+
+        # ---------------- 常规 ----------------
+        general_tab = QWidget()
+        gform = QFormLayout(general_tab)
+        gform.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
+
+        self.name_edit = QLineEdit(settings.device_name)
+        self.name_edit.setMaxLength(63)
+
+        self.autostart_check = QCheckBox("登录 Windows 时自动启动本程序")
+        self.autostart_check.setChecked(settings.auto_start)
+
+        self.sleep_check = QCheckBox("禁止自动熄屏 / 系统休眠（推荐）")
+        self.sleep_check.setChecked(settings.prevent_sleep)
+        self.sleep_check.setToolTip(
+            "投屏期间保持屏幕常亮、阻止系统进入睡眠；\n"
+            "关闭后 Windows 的电源计划会照常让屏幕自动熄灭。")
+
+        self.tray_check = QCheckBox("显示托盘图标")
+        self.tray_check.setChecked(settings.tray_enabled)
+
+        self.minimize_check = QCheckBox("关闭窗口时最小化到托盘（不退出）")
+        self.minimize_check.setChecked(settings.minimize_to_tray)
+        self.minimize_check.setToolTip(
+            "开启后 Alt+F4 / 关闭按钮会隐藏到托盘；\n"
+            "要彻底退出请用托盘菜单“退出”或按 ESC / Q（本程序窗口在前台时）。")
+
+        self.sound_check = QCheckBox("客户端连接时播放提示音")
+        self.sound_check.setChecked(settings.connect_sound)
+
+        about = QLabel(
+            f"版本：{version or 'dev'}\n"
+            f"uxplay：{uxplay_path or '（未找到）'}\n"
+            f"日志：{log_file}\n"
+            f"配置：%APPDATA%\\{APP_NAME}\\config.json"
+        )
+        about.setStyleSheet("color:#999; font-size:12px;")
+        about.setWordWrap(True)
+
+        gform.addRow("设备名称：", self.name_edit)
+        gform.addRow("", self.autostart_check)
+        gform.addRow("", self.sleep_check)
+        gform.addRow("", self.tray_check)
+        gform.addRow("", self.minimize_check)
+        gform.addRow("", self.sound_check)
+        gform.addRow("", about)
+
+        tabs.addTab(video_tab, "视频")
+        tabs.addTab(display_tab, "显示")
+        tabs.addTab(general_tab, "常规")
+
+        # ---------------- 按钮 ----------------
+        btn_row = QHBoxLayout()
+        reset_btn = QPushButton("恢复默认")
+        reset_btn.clicked.connect(self._reset_defaults)
+        btn_box = QDialogButtonBox()
+        btn_box.addButton("保存并应用", QDialogButtonBox.ButtonRole.AcceptRole)
+        btn_box.addButton("取消", QDialogButtonBox.ButtonRole.RejectRole)
+        btn_box.accepted.connect(self.accept)
+        btn_box.rejected.connect(self.reject)
+        btn_row.addWidget(reset_btn)
+        btn_row.addStretch(1)
+        btn_row.addWidget(btn_box)
+
+        root = QVBoxLayout(self)
+        root.addWidget(tabs)
+        root.addLayout(btn_row)
+
+    # ---------------- 交互逻辑 ----------------
+    def _on_size_changed(self, _idx: int) -> None:
+        # 选 4K 时自动切换到高画质（H.265）
+        if self.size_combo.currentData() == "3840x2160":
+            self.quality_combo.setCurrentIndex(self.quality_combo.findData("high"))
+
+    def _on_mode_changed(self, _idx: int) -> None:
+        self.top_check.setEnabled(self.mode_combo.currentData() == "windowed")
+
+    def _reset_defaults(self) -> None:
+        d = Settings()
+        self.size_combo.setCurrentIndex(self.size_combo.findData(d.video_size))
+        self.quality_combo.setCurrentIndex(self.quality_combo.findData(d.video_quality))
+        self.fps_combo.setCurrentIndex(self.fps_combo.findData(d.fps))
+        self.audio_check.setChecked(d.audio_enabled)
+        self.flip_combo.setCurrentIndex(self.flip_combo.findData(d.flip_mode))
+        self.rotate_combo.setCurrentIndex(self.rotate_combo.findData(d.rotate_mode))
+        self.mode_combo.setCurrentIndex(self.mode_combo.findData(d.display_mode))
+        self.monitor_combo.setCurrentIndex(self.monitor_combo.findData(0))
+        self.top_check.setChecked(d.always_on_top)
+        self.remember_check.setChecked(d.remember_window)
+        self.standalone_check.setChecked(d.standalone)
+        self.cursor_check.setChecked(d.hide_cursor)
+        self.overlay_check.setChecked(d.status_overlay)
+        self.ipad_mode_combo.setCurrentIndex(self.ipad_mode_combo.findData(d.ipad_mode))
+        self.mac_mode_combo.setCurrentIndex(self.mac_mode_combo.findData(d.mac_mode))
+        self.ask_check.setChecked(d.ask_on_connect)
+        self.name_edit.setText(d.device_name)
+        self.autostart_check.setChecked(d.auto_start)
+        self.sleep_check.setChecked(d.prevent_sleep)
+        self.tray_check.setChecked(d.tray_enabled)
+        self.minimize_check.setChecked(d.minimize_to_tray)
+        self.sound_check.setChecked(d.connect_sound)
+
+    def result_settings(self) -> Settings:
+        """读取对话框当前值（供保存/应用）。"""
+        s = Settings()
+        s.device_name = self.name_edit.text().strip() or "iPad-Screen"
+        s.video_size = self.size_combo.currentData()
+        s.video_quality = self.quality_combo.currentData()
+        s.fps = self.fps_combo.currentData()
+        s.audio_enabled = self.audio_check.isChecked()
+        s.flip_mode = self.flip_combo.currentData()
+        s.rotate_mode = self.rotate_combo.currentData()
+        s.display_mode = self.mode_combo.currentData()
+        s.monitor_index = self.monitor_combo.currentData() or 0
+        s.always_on_top = self.top_check.isChecked()
+        s.remember_window = self.remember_check.isChecked()
+        s.standalone = self.standalone_check.isChecked()
+        s.hide_cursor = self.cursor_check.isChecked()
+        s.status_overlay = self.overlay_check.isChecked()
+        s.ipad_mode = self.ipad_mode_combo.currentData()
+        s.mac_mode = self.mac_mode_combo.currentData()
+        s.ask_on_connect = self.ask_check.isChecked()
+        s.auto_start = self.autostart_check.isChecked()
+        s.prevent_sleep = self.sleep_check.isChecked()
+        s.tray_enabled = self.tray_check.isChecked()
+        s.minimize_to_tray = self.minimize_check.isChecked()
+        s.connect_sound = self.sound_check.isChecked()
+        return s
