@@ -45,7 +45,7 @@ from kvm import extract_portable, portable_dir, resolve_deskflow
 from lanshare import LanShare
 from settings_dialog import SettingsDialog
 
-APP_VERSION = "2.7.6"
+APP_VERSION = "2.7.7"
 LOG_FILE = Path(tempfile.gettempdir()) / "Airflow.log"
 
 VK_F1 = 0x70
@@ -184,8 +184,14 @@ WS_VISIBLE = 0x10000000
 WS_POPUP = 0x80000000
 WS_CAPTION = 0x00C00000
 WS_THICKFRAME = 0x00040000
+SWP_NOSIZE = 0x0001
+SWP_NOMOVE = 0x0002
 SWP_NOZORDER = 0x0004
 SWP_NOACTIVATE = 0x0010
+GWL_EXSTYLE = -20
+WS_EX_TOPMOST = 0x00000008
+HWND_TOPMOST = -1
+HWND_NOTOPMOST = -2
 WM_CLOSE = 0x0010
 
 _EnumWindowsProc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
@@ -1236,8 +1242,37 @@ class ReceiverWindow(QWidget):
         if not self._overlay.isVisible():
             self._overlay.show()
 
+    def _sync_topmost(self) -> None:
+        """前台是本程序时保持置顶；切到别的应用时主动取消置顶，确保 Alt+Tab 能正常切换。"""
+        if not self._settings.always_on_top or not self.isVisible():
+            return
+        hwnd = int(self.winId())
+        if not hwnd:
+            return
+        fg = user32.GetForegroundWindow()
+        ours = (fg == hwnd)
+        if not ours and self._dialog_open:
+            return  # 设置窗口打开时不要动
+        try:
+            if hasattr(user32, "GetWindowLongPtrW"):
+                ex = user32.GetWindowLongPtrW(hwnd, GWL_EXSTYLE)
+            else:
+                ex = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+        except OSError:
+            return
+        topmost = bool(ex & WS_EX_TOPMOST)
+        if ours and not topmost:
+            user32.SetWindowPos(wintypes.HWND(hwnd), wintypes.HWND(HWND_TOPMOST),
+                                0, 0, 0, 0,
+                                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)
+        elif not ours and topmost:
+            user32.SetWindowPos(wintypes.HWND(hwnd), wintypes.HWND(HWND_NOTOPMOST),
+                                0, 0, 0, 0,
+                                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)
+
     def _tick_cursor(self) -> None:
         """全屏 + 前台是本程序时，闲置 2 秒自动隐藏鼠标指针。"""
+        self._sync_topmost()
         active = (self._settings.hide_cursor
                   and self._settings.display_mode == "fullscreen"
                   and self.isVisible()

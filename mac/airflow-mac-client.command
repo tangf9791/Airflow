@@ -28,16 +28,39 @@ else
 fi
 DMG_URL="https://github.com/deskflow/deskflow/releases/download/v${DESKFLOW_VERSION}/${DMG_NAME}"
 
+# 优先用 Homebrew（完全不需要挂载安装包）
+if [ ! -d "$APP" ] && command -v brew >/dev/null 2>&1; then
+  say "检测到 Homebrew，尝试用 brew 安装 Deskflow…"
+  brew install --cask deskflow >/dev/null 2>&1 || true
+fi
+
 if [ ! -d "$APP" ]; then
   say "未安装 Deskflow，正在下载（$ARCH）…"
-  curl -L --fail --progress-bar "$DMG_URL" -o "$TMP_DMG" || die "下载失败，请检查网络后重试。"
-  say "正在安装到 /Applications …"
-  hdiutil attach "$TMP_DMG" -nobrowse -quiet || die "无法挂载安装包。"
-  VOL="$(ls -d /Volumes/Deskflow* 2>/dev/null | head -1)"
-  [ -n "$VOL" ] || die "未找到安装卷。"
-  if [ -d "$VOL/Deskflow.app" ]; then
-    cp -R "$VOL/Deskflow.app" /Applications/ 2>/dev/null || sudo cp -R "$VOL/Deskflow.app" /Applications/ || die "复制失败。"
+  for v in /Volumes/Deskflow*; do
+    [ -d "$v" ] && hdiutil detach "$v" -quiet 2>/dev/null
+  done
+  rm -f "$TMP_DMG"
+  curl -L --fail --retry 3 --retry-delay 2 --progress-bar "$DMG_URL" -o "$TMP_DMG" \
+    || die "下载失败，请检查网络。也可手动安装：$DMG_URL"
+  SIZE="$(wc -c < "$TMP_DMG" 2>/dev/null | tr -d ' ')"
+  [ "${SIZE:-0}" -gt 10000000 ] || die "下载不完整（${SIZE:-0} 字节），请重试。"
+  say "正在挂载安装包…"
+  VOL=""
+  if hdiutil attach "$TMP_DMG" -nobrowse -noverify -quiet >/dev/null 2>&1; then
+    VOL="$(ls -d /Volumes/Deskflow* 2>/dev/null | head -1)"
   fi
+  if [ -z "$VOL" ]; then
+    MNT="/tmp/AirflowDeskflowMnt"
+    mkdir -p "$MNT"
+    if hdiutil attach "$TMP_DMG" -nobrowse -noverify -quiet -mountpoint "$MNT" >/dev/null 2>&1; then
+      VOL="$MNT"
+    fi
+  fi
+  [ -n "$VOL" ] && [ -d "$VOL" ] || die "无法挂载安装包（系统可能限制磁盘镜像）。可手动下载安装：$DMG_URL"
+  SRC_APP="$(ls -d "$VOL"/*.app 2>/dev/null | head -1)"
+  [ -n "$SRC_APP" ] || die "安装包里没有找到应用。"
+  cp -R "$SRC_APP" /Applications/ 2>/dev/null || sudo cp -R "$SRC_APP" /Applications/ || die "复制到 /Applications 失败。"
+  xattr -dr com.apple.quarantine "$APP" 2>/dev/null || true
   hdiutil detach "$VOL" -quiet 2>/dev/null
   rm -f "$TMP_DMG"
 fi
