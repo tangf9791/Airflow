@@ -42,9 +42,10 @@ from PyQt6.QtWidgets import (
 
 from config import APP_NAME, Settings, load_settings, save_settings, set_autostart
 from kvm import extract_portable, portable_dir, resolve_deskflow
+from lanshare import LanShare
 from settings_dialog import SettingsDialog
 
-APP_VERSION = "2.6.0"
+APP_VERSION = "2.7.0"
 LOG_FILE = Path(tempfile.gettempdir()) / "Airflow.log"
 
 VK_F1 = 0x70
@@ -542,6 +543,7 @@ class ReceiverWindow(QWidget):
         self._present_requested = False
         self._chooser = None
         self._kvm_proc: QProcess | None = None
+        self._lan = LanShare()
         self._bonjour_ok = True
         self._tray: QSystemTrayIcon | None = None
         self._cursor_hidden = False
@@ -601,6 +603,7 @@ class ReceiverWindow(QWidget):
         self._cursor_timer.start()
         if not self._no_uxplay:
             self._ensure_bonjour()
+        self._ensure_lan_share()
         if self._no_uxplay:
             self._status.setText("测试模式：已跳过 uxplay 启动\n\n按 ESC 或 Q 退出")
             return
@@ -660,6 +663,17 @@ class ReceiverWindow(QWidget):
         QApplication.processEvents()
         self._bonjour_ok = install_bonjour()
         log(f"bonjour: auto-install ok={self._bonjour_ok}")
+
+    def _ensure_lan_share(self) -> None:
+        if not self._settings.lan_share:
+            return
+        ok, msg = self._lan.start()
+        log(f"lan share: {msg if ok else 'failed: ' + msg}")
+
+    def _lan_hint(self) -> str:
+        if self._lan.running:
+            return f"\nMac 客户端下载：{self._lan.url()}"
+        return ""
 
     def _start_kvm(self) -> None:
         """按设置启动 Deskflow（键盘共享）。"""
@@ -724,8 +738,9 @@ class ReceiverWindow(QWidget):
             self._chooser.hide()
 
         warn = "" if self._bonjour_ok else "\n⚠ Apple Bonjour 未就绪，iPad 可能搜不到本机"
+        lan = self._lan_hint()
         self._status.setText(
-            f"等待 iPad 投屏连接…{warn}\n设备名：{self._settings.device_name}\n\n"
+            f"等待 iPad 投屏连接…{warn}{lan}\n设备名：{self._settings.device_name}\n\n"
             f"按 F1 设置 · F5 重启投屏 · 按 ESC 或 Q 退出"
         )
         if self._settings.standalone:
@@ -775,6 +790,7 @@ class ReceiverWindow(QWidget):
                 version=APP_VERSION,
                 uxplay_path=str(resolve_uxplay() or ""),
                 log_file=str(LOG_FILE),
+                lan_url=self._lan.url() if self._lan.running else "",
             )
             if dlg.exec():
                 new = dlg.result_settings()
@@ -812,6 +828,16 @@ class ReceiverWindow(QWidget):
                         self._start_kvm()
                     else:
                         self._stop_kvm()
+                if old.lan_share != new.lan_share:
+                    if new.lan_share:
+                        self._ensure_lan_share()
+                    else:
+                        self._lan.stop()
+                        log("lan share stopped")
+                self._status.setText(
+                    f"等待 iPad 投屏连接…{self._lan_hint()}\n"
+                    f"设备名：{new.device_name}\n\n"
+                    f"按 F1 设置 · F5 重启投屏 · 按 ESC 或 Q 退出")
                 self._apply_display_mode()
                 self._update_overlay()
                 if old.ipad_mode != new.ipad_mode or old.mac_mode != new.mac_mode:
@@ -1073,6 +1099,7 @@ class ReceiverWindow(QWidget):
             menu.addAction("重启投屏服务 (F5)", lambda: self.restart_uxplay("tray"))
             menu.addAction("显示方式：全屏拉伸", lambda: self.set_present("fullscreen"))
             menu.addAction("显示方式：1:1 扩展", lambda: self.set_present("native"))
+            menu.addAction("复制 Mac 客户端下载链接", self._copy_lan_link)
             menu.addSeparator()
             menu.addAction("退出", lambda: self.shutdown("tray quit"))
             self._tray.setContextMenu(menu)
@@ -1084,6 +1111,13 @@ class ReceiverWindow(QWidget):
     def _on_tray_activated(self, reason) -> None:
         if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
             self._show_from_tray()
+
+    def _copy_lan_link(self) -> None:
+        if not self._lan.running:
+            log("lan share: not running, nothing to copy")
+            return
+        QApplication.clipboard().setText(self._lan.url())
+        log(f"lan share: copied {self._lan.url()}")
 
     def _show_from_tray(self) -> None:
         self._apply_display_mode()
@@ -1174,6 +1208,7 @@ class ReceiverWindow(QWidget):
         if self._hook:
             self._hook.uninstall()
         self._stop_kvm()
+        self._lan.stop()
         self._stop_uxplay()
         set_prevent_sleep(False)  # 释放熄屏/休眠抑制
         log("shutdown complete")

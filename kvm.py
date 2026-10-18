@@ -117,6 +117,20 @@ def mac_template_path() -> Path | None:
     return None
 
 
+def mac_client_text() -> str | None:
+    """返回已填入本机 IP 的 Mac 客户端脚本内容。"""
+    tpl = mac_template_path()
+    if tpl is None:
+        return None
+    ip = local_ip()
+    if not ip:
+        return None
+    try:
+        return tpl.read_text(encoding="utf-8").replace(PC_IP_PLACEHOLDER, ip)
+    except OSError:
+        return None
+
+
 def generate_mac_client(target: Path) -> tuple[bool, str]:
     """把模板里的 PC IP 替换成本机当前 IP，写到 target。"""
     tpl = mac_template_path()

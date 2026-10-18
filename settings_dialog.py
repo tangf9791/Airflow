@@ -8,8 +8,9 @@ from pathlib import Path
 from PyQt6.QtCore import QProcess, Qt
 from PyQt6.QtGui import QGuiApplication
 from PyQt6.QtWidgets import (
-    QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout,
-    QLabel, QLineEdit, QMessageBox, QPushButton, QTabWidget, QVBoxLayout, QWidget,
+    QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout,
+    QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QTabWidget,
+    QVBoxLayout, QWidget,
 )
 
 from config import (
@@ -43,7 +44,7 @@ QToolTip { background-color: #2d2d2d; color: #e0e0e0; border: 1px solid #555; }
 
 class SettingsDialog(QDialog):
     def __init__(self, settings: Settings, parent=None, *, version: str = "",
-                 uxplay_path: str = "", log_file: str = ""):
+                 uxplay_path: str = "", log_file: str = "", lan_url: str = ""):
         super().__init__(parent)
         self.setWindowTitle(f"{APP_NAME} · 设置")
         self.setModal(True)
@@ -225,10 +226,29 @@ class SettingsDialog(QDialog):
         kvm_help.setWordWrap(True)
         kvm_help.setStyleSheet("color:#bbb; font-size:12px;")
 
+        self.lan_check = QCheckBox("局域网分享（Mac 用浏览器打开网址即可下载客户端）")
+        self.lan_check.setChecked(settings.lan_share)
+        self.lan_check.setToolTip(
+            "开启后本机会在局域网上提供一个只读下载页；\n"
+            "Mac 浏览器打开显示的网址即可下载客户端脚本。")
+
+        self.lan_url = QLabel(lan_url or "（保存并应用后开启；地址会显示在等待界面和托盘菜单）")
+        self.lan_url.setStyleSheet("color:#7dd3fc; font-size:12px;")
+        self.lan_url.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.lan_url.setWordWrap(True)
+
+        lan_row = QHBoxLayout()
+        copy_btn = QPushButton("复制链接")
+        copy_btn.clicked.connect(self._copy_lan_url)
+        lan_row.addWidget(self.lan_url, 1)
+        lan_row.addWidget(copy_btn)
+
         kform.addRow("", self.kvm_check)
         kform.addRow("", self.kvm_status)
         kform.addRow("", kvm_btn_row)
         kform.addRow("", kvm_help)
+        kform.addRow("", self.lan_check)
+        kform.addRow("", lan_row)
 
         # ---------------- 常规 ----------------
         general_tab = QWidget()
@@ -341,6 +361,16 @@ class SettingsDialog(QDialog):
         if exe is None:
             QMessageBox.warning(self, "Deskflow", "解压失败，请检查安装包。")
 
+    def _copy_lan_url(self) -> None:
+        text = self.lan_url.text().strip()
+        if text.startswith("http"):
+            QApplication.clipboard().setText(text)
+        else:
+            QMessageBox.information(
+                self, "局域网分享",
+                "开启并「保存并应用」后，地址会显示在这里；\n"
+                "也可以从主界面等待页或托盘菜单查看。")
+
     def _generate_mac_client(self) -> None:
         from PyQt6.QtCore import QStandardPaths
         from PyQt6.QtWidgets import QFileDialog
@@ -389,6 +419,7 @@ class SettingsDialog(QDialog):
         self.minimize_check.setChecked(d.minimize_to_tray)
         self.sound_check.setChecked(d.connect_sound)
         self.kvm_check.setChecked(d.kvm_enabled)
+        self.lan_check.setChecked(d.lan_share)
 
     def result_settings(self) -> Settings:
         """读取对话框当前值（供保存/应用）。"""
@@ -417,4 +448,5 @@ class SettingsDialog(QDialog):
         s.connect_sound = self.sound_check.isChecked()
         s.kvm_enabled = self.kvm_check.isChecked()
         s.deskflow_path = self._deskflow_path
+        s.lan_share = self.lan_check.isChecked()
         return s
