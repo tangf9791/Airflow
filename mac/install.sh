@@ -14,18 +14,12 @@ DONE=0
 say() { printf "\033[1;36m[Airflow]\033[0m %s\n" "$1"; }
 die() { printf "\033[1;31m[Airflow]\033[0m %s\n" "$1" >&2; exit 1; }
 
+# IP 由 Windows 端注入；这里绝不读取 stdin（curl | bash 时 stdin 是脚本本身）
 if [ -z "$PC_IP" ] || [ "$PC_IP" = "__AIRFLOW_PC_IP__" ]; then
-  printf "请输入 Windows 电脑的局域网 IP："
-  if [ -t 0 ]; then
-    read -r PC_IP
-  else
-    # curl | bash 模式下 stdin 是脚本本身，必须从终端读
-    read -r PC_IP < /dev/tty || die "无法读取输入；请改用局域网页面提供的完整命令。"
-  fi
+  die "这个链接没有携带电脑 IP，请在 Windows 端重新打开下载页复制新命令。"
 fi
-[ -n "$PC_IP" ] || die "没有填写 IP，退出。"
 
-ARCH="$(uname -m)"
+ARCH="$(uname -m 2>/dev/null || echo unknown)"
 if [ "$ARCH" = "arm64" ]; then
   DMG_NAME="deskflow-${DESKFLOW_VERSION}-macos-arm64.dmg"
 else

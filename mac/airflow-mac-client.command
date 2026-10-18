@@ -15,13 +15,12 @@ DONE=0
 say() { printf "\033[1;36m[Airflow]\033[0m %s\n" "$1"; }
 die() { printf "\033[1;31m[Airflow]\033[0m %s\n" "$1" >&2; exit 1; }
 
+# IP 由 Windows 端注入
 if [ -z "$PC_IP" ] || [ "$PC_IP" = "__AIRFLOW_PC_IP__" ]; then
-  printf "请输入 Windows 电脑的局域网 IP："
-  read -r PC_IP
+  die "这个文件没有携带电脑 IP，请重新从 Windows 端下载。"
 fi
-[ -n "$PC_IP" ] || die "没有填写 IP，退出。"
 
-ARCH="$(uname -m)"
+ARCH="$(uname -m 2>/dev/null || echo unknown)"
 if [ "$ARCH" = "arm64" ]; then
   DMG_NAME="deskflow-${DESKFLOW_VERSION}-macos-arm64.dmg"
 else
