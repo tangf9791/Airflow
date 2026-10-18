@@ -232,7 +232,7 @@ class SettingsDialog(QDialog):
             "开启后本机会在局域网上提供一个只读下载页；\n"
             "Mac 浏览器打开显示的网址即可下载客户端脚本。")
 
-        self.lan_url = QLabel(lan_url or "（保存并应用后开启；地址会显示在等待界面和托盘菜单）")
+        self.lan_url = QLabel(lan_url or "保存后生效：主界面会显示下载网址，按 F3 或点「复制下载链接」即可复制")
         self.lan_url.setStyleSheet("color:#7dd3fc; font-size:12px;")
         self.lan_url.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.lan_url.setWordWrap(True)

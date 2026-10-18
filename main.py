@@ -45,11 +45,12 @@ from kvm import extract_portable, portable_dir, resolve_deskflow
 from lanshare import LanShare
 from settings_dialog import SettingsDialog
 
-APP_VERSION = "2.7.0"
+APP_VERSION = "2.7.1"
 LOG_FILE = Path(tempfile.gettempdir()) / "Airflow.log"
 
 VK_F1 = 0x70
 VK_F2 = 0x71
+VK_F3 = 0x72
 VK_F5 = 0x74
 IDC_ARROW = 32512
 
@@ -334,13 +335,15 @@ class GlobalHotkeyHook:
     """低层键盘钩子：ESC/Q 退出；F1 打开设置（即使焦点在 uxplay 窗口里）。"""
 
     def __init__(self, target_hwnd: int, dialog_check=None, settings_callback=None,
-                 uxplay_pid_fn=None, restart_callback=None, present_callback=None):
+                 uxplay_pid_fn=None, restart_callback=None, present_callback=None,
+                 lan_callback=None):
         self._target_hwnd = target_hwnd
         self._dialog_check = dialog_check or (lambda: False)
         self._settings_callback = settings_callback
         self._uxplay_pid_fn = uxplay_pid_fn or (lambda: 0)
         self._restart_callback = restart_callback
         self._present_callback = present_callback
+        self._lan_callback = lan_callback
         self._handle = None
         self._proc = _LowLevelKeyboardProc(self._callback)
 
@@ -372,6 +375,9 @@ class GlobalHotkeyHook:
                     return 1
                 if info.vkCode == VK_F2 and self._present_callback:
                     self._present_callback()
+                    return 1
+                if info.vkCode == VK_F3 and self._lan_callback:
+                    self._lan_callback()
                     return 1
                 if info.vkCode in (VK_ESCAPE, VK_Q):
                     user32.PostMessageW(self._target_hwnd, WM_CLOSE, 0, 0)
@@ -541,6 +547,7 @@ class ReceiverWindow(QWidget):
         self._stream_size: tuple[int, int] | None = None
         self._active_present = "fullscreen"
         self._present_requested = False
+        self._lan_requested = False
         self._chooser = None
         self._kvm_proc: QProcess | None = None
         self._lan = LanShare()
@@ -560,9 +567,30 @@ class ReceiverWindow(QWidget):
             "color:#c9c9c9; font-size:22px; font-family:'Microsoft YaHei';"
             " background:transparent;"
         )
+        self._lan_label = QLabel(self)
+        self._lan_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._lan_label.setStyleSheet(
+            "color:#7dd3fc; font-size:18px; font-family:'Microsoft YaHei';")
+        self._lan_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse)
+        self._lan_label.hide()
+
+        self._lan_btn = QPushButton("复制下载链接（F3）", self)
+        self._lan_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._lan_btn.setFixedWidth(240)
+        self._lan_btn.setStyleSheet(
+            "QPushButton{color:#fff;background:#3d5afe;border:none;"
+            "border-radius:8px;padding:8px 18px;font-size:15px;}"
+            "QPushButton:hover{background:#5668ff;}")
+        self._lan_btn.hide()
+        self._lan_btn.clicked.connect(self._copy_lan_link)
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
         layout.addWidget(self._status)
+        layout.addSpacing(14)
+        layout.addWidget(self._lan_label)
+        layout.addWidget(self._lan_btn, alignment=Qt.AlignmentFlag.AlignHCenter)
 
         # 轮询查找并内嵌 uxplay 的视频窗口（SDL 版启动即建窗；
         # GStreamer 版要等客户端连接后才建窗，所以持续轮询）
@@ -604,6 +632,7 @@ class ReceiverWindow(QWidget):
         if not self._no_uxplay:
             self._ensure_bonjour()
         self._ensure_lan_share()
+        self._update_lan_ui()
         if self._no_uxplay:
             self._status.setText("测试模式：已跳过 uxplay 启动\n\n按 ESC 或 Q 退出")
             return
@@ -738,11 +767,11 @@ class ReceiverWindow(QWidget):
             self._chooser.hide()
 
         warn = "" if self._bonjour_ok else "\n⚠ Apple Bonjour 未就绪，iPad 可能搜不到本机"
-        lan = self._lan_hint()
         self._status.setText(
-            f"等待 iPad 投屏连接…{warn}{lan}\n设备名：{self._settings.device_name}\n\n"
+            f"等待 iPad 投屏连接…{warn}\n设备名：{self._settings.device_name}\n\n"
             f"按 F1 设置 · F5 重启投屏 · 按 ESC 或 Q 退出"
         )
+        self._update_lan_ui()
         if self._settings.standalone:
             # uxplay 使用自带全屏窗口，本窗口隐藏，只负责生命周期与全局热键
             QTimer.singleShot(1200, self.hide)
@@ -834,8 +863,9 @@ class ReceiverWindow(QWidget):
                     else:
                         self._lan.stop()
                         log("lan share stopped")
+                self._update_lan_ui()
                 self._status.setText(
-                    f"等待 iPad 投屏连接…{self._lan_hint()}\n"
+                    f"等待 iPad 投屏连接…\n"
                     f"设备名：{new.device_name}\n\n"
                     f"按 F1 设置 · F5 重启投屏 · 按 ESC 或 Q 退出")
                 self._apply_display_mode()
@@ -966,6 +996,8 @@ class ReceiverWindow(QWidget):
             log(f"uxplay video window embedded: hwnd={target:#x} "
                 f"stream={self._stream_size} present={self._active_present}")
             self._status.hide()
+            self._lan_label.hide()
+            self._lan_btn.hide()
             self._apply_video_layout()
         else:
             self._apply_video_layout()
@@ -988,6 +1020,10 @@ class ReceiverWindow(QWidget):
             self.toggle_present()
             event.accept()
             return
+        if event.key() == Qt.Key.Key_F3:
+            self._copy_lan_link()
+            event.accept()
+            return
         if event.key() in (Qt.Key.Key_Escape, Qt.Key.Key_Q):
             self.shutdown("pressed ESC/Q")
             event.accept()
@@ -995,6 +1031,10 @@ class ReceiverWindow(QWidget):
         super().keyPressEvent(event)
 
     def _check_settings_request(self) -> None:
+        if self._lan_requested:
+            self._lan_requested = False
+            self._copy_lan_link()
+            return
         if self._present_requested:
             self._present_requested = False
             self.toggle_present()
@@ -1112,12 +1152,39 @@ class ReceiverWindow(QWidget):
         if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
             self._show_from_tray()
 
+    def _update_lan_ui(self) -> None:
+        if self._lan.running and not self._shutting_down:
+            url = self._lan.url()
+            self._lan_label.setText(
+                f"Mac 客户端下载：{url}\n"
+                f"在 Mac 的浏览器地址栏输入上面的网址即可下载")
+            self._lan_label.show()
+            self._lan_btn.show()
+        else:
+            self._lan_label.hide()
+            self._lan_btn.hide()
+
+    def _restore_idle_status(self) -> None:
+        if self._shutting_down:
+            return
+        warn = "" if self._bonjour_ok else "\n⚠ Apple Bonjour 未就绪"
+        self._status.setText(
+            f"等待 iPad 投屏连接…{warn}\n设备名：{self._settings.device_name}\n\n"
+            f"按 F1 设置 · F5 重启投屏 · 按 ESC 或 Q 退出")
+
     def _copy_lan_link(self) -> None:
         if not self._lan.running:
-            log("lan share: not running, nothing to copy")
+            self._status.setText(
+                "局域网分享未开启\n请在 设置 → 键盘共享 中勾选「局域网分享」并保存")
+            QTimer.singleShot(5000, self._restore_idle_status)
             return
-        QApplication.clipboard().setText(self._lan.url())
-        log(f"lan share: copied {self._lan.url()}")
+        url = self._lan.url()
+        QApplication.clipboard().setText(url)
+        log(f"lan share: copied {url}")
+        self._status.setText(
+            f"已复制下载链接\n\n{url}\n\n"
+            f"在 Mac 的浏览器地址栏输入这个网址即可下载")
+        QTimer.singleShot(6000, self._restore_idle_status)
 
     def _show_from_tray(self) -> None:
         self._apply_display_mode()
@@ -1250,6 +1317,7 @@ def main() -> int:
         settings_callback=lambda: setattr(window, "_settings_requested", True),
         restart_callback=lambda: setattr(window, "_restart_requested", True),
         present_callback=lambda: setattr(window, "_present_requested", True),
+        lan_callback=lambda: setattr(window, "_lan_requested", True),
         uxplay_pid_fn=lambda: (int(window._proc.processId())
                                if window._proc
                                and window._proc.state() != QProcess.ProcessState.NotRunning
