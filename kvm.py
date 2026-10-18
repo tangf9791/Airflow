@@ -87,3 +87,51 @@ def resolve_deskflow(configured: str = "") -> tuple[Path | None, str]:
     if p is not None:
         return p, "内置便携版"
     return None, "未找到"
+
+# ================= Mac 客户端一键脚本 =================
+MAC_TEMPLATE_NAME = "airflow-mac-client.command"
+PC_IP_PLACEHOLDER = "__AIRFLOW_PC_IP__"
+
+
+def local_ip() -> str:
+    """获取本机局域网出口 IP（用于生成 Mac 端脚本）。"""
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(("223.5.5.5", 80))
+            return s.getsockname()[0]
+        finally:
+            s.close()
+    except OSError:
+        return ""
+
+
+def mac_template_path() -> Path | None:
+    app_dir = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).parent
+    meipass = Path(getattr(sys, "_MEIPASS", app_dir))
+    for base in (app_dir, meipass, Path.cwd()):
+        p = base / "mac" / MAC_TEMPLATE_NAME
+        if p.is_file():
+            return p
+    return None
+
+
+def generate_mac_client(target: Path) -> tuple[bool, str]:
+    """把模板里的 PC IP 替换成本机当前 IP，写到 target。"""
+    tpl = mac_template_path()
+    if tpl is None:
+        return False, "未找到 Mac 客户端模板（安装包不完整）"
+    ip = local_ip()
+    if not ip:
+        return False, "无法获取本机局域网 IP，请检查网络连接"
+    try:
+        text = tpl.read_text(encoding="utf-8")
+    except OSError as exc:
+        return False, f"读取模板失败：{exc}"
+    text = text.replace(PC_IP_PLACEHOLDER, ip)
+    try:
+        target.write_text(text, encoding="utf-8", newline="\n")
+    except OSError as exc:
+        return False, f"写入失败：{exc}"
+    return True, str(target)

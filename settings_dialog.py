@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from PyQt6.QtCore import QProcess, Qt
 from PyQt6.QtGui import QGuiApplication
 from PyQt6.QtWidgets import (
@@ -206,8 +208,12 @@ class SettingsDialog(QDialog):
         open_btn.clicked.connect(self._open_deskflow)
         reextract_btn = QPushButton("重新解压内置版")
         reextract_btn.clicked.connect(self._reextract_deskflow)
+        mac_btn = QPushButton("生成 Mac 端一键脚本")
+        mac_btn.setToolTip("生成一个 .command 脚本：拷到 Mac 上双击即可自动安装并连接本机。")
+        mac_btn.clicked.connect(self._generate_mac_client)
         kvm_btn_row.addWidget(open_btn)
         kvm_btn_row.addWidget(reextract_btn)
+        kvm_btn_row.addWidget(mac_btn)
         kvm_btn_row.addStretch(1)
 
         kvm_help = QLabel(
@@ -334,6 +340,29 @@ class SettingsDialog(QDialog):
         self.kvm_status.setText(self._deskflow_status(self._settings))
         if exe is None:
             QMessageBox.warning(self, "Deskflow", "解压失败，请检查安装包。")
+
+    def _generate_mac_client(self) -> None:
+        from PyQt6.QtCore import QStandardPaths
+        from PyQt6.QtWidgets import QFileDialog
+        from kvm import generate_mac_client, local_ip
+
+        desktop = QStandardPaths.writableLocation(
+            QStandardPaths.StandardLocation.DesktopLocation)
+        default_path = (Path(desktop) if desktop else Path.home()) / "Airflow-Mac-Client.command"
+        path, _ = QFileDialog.getSaveFileName(
+            self, "保存 Mac 端一键脚本", str(default_path),
+            "Shell 脚本 (*.command)")
+        if not path:
+            return
+        ok, msg = generate_mac_client(Path(path))
+        if ok:
+            QMessageBox.information(
+                self, "已生成 Mac 端脚本",
+                f"已生成：\n{msg}\n\n本机局域网 IP：{local_ip()}\n\n"
+                "把这个文件拷到 Mac 上，双击运行即可（首次会自动下载安装 Deskflow）。\n"
+                "如果双击提示没有权限：右键 → 打开，或在终端执行 chmod +x 该文件。")
+        else:
+            QMessageBox.warning(self, "生成失败", msg)
 
     def _reset_defaults(self) -> None:
         d = Settings()

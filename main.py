@@ -44,7 +44,7 @@ from config import APP_NAME, Settings, load_settings, save_settings, set_autosta
 from kvm import extract_portable, portable_dir, resolve_deskflow
 from settings_dialog import SettingsDialog
 
-APP_VERSION = "2.5.0"
+APP_VERSION = "2.6.0"
 LOG_FILE = Path(tempfile.gettempdir()) / "Airflow.log"
 
 VK_F1 = 0x70
