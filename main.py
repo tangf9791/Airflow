@@ -45,7 +45,7 @@ from kvm import extract_portable, portable_dir, resolve_deskflow
 from lanshare import LanShare
 from settings_dialog import SettingsDialog
 
-APP_VERSION = "2.7.8"
+APP_VERSION = "2.7.9"
 LOG_FILE = Path(tempfile.gettempdir()) / "Airflow.log"
 
 VK_F1 = 0x70
@@ -142,6 +142,17 @@ def ensure_firewall_rule(exe: Path) -> None:
         shell32.ShellExecuteW(None, "runas", "cmd.exe", args, None, 0)
     except OSError as exc:
         log(f"firewall: 调用失败 {exc}")
+
+
+def restart_bonjour() -> None:
+    """重启 Bonjour 服务（需管理员），清除 IP 变化后残留的 mDNS 注册。"""
+    log("bonjour: 重启服务以刷新 mDNS 注册")
+    try:
+        shell32.ShellExecuteW(None, "runas", "cmd.exe",
+                              '/c net stop "Bonjour Service" & net start "Bonjour Service"',
+                              None, 0)
+    except OSError as exc:
+        log(f"bonjour: 重启失败 {exc}")
 
 
 def ensure_bonjour_running() -> None:
@@ -813,6 +824,7 @@ class ReceiverWindow(QWidget):
             old = self._settings.last_ip
             if old and old != ip:
                 log(f"network: IP 变化 {old} -> {ip}")
+                restart_bonjour()
                 self._status.setText(
                     f"本机 IP 已变化：{old} → {ip}\n\n"
                     f"Mac 如果搜不到本机，请按 F5 重启投屏服务")

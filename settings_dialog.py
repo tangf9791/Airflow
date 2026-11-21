@@ -89,6 +89,12 @@ class SettingsDialog(QDialog):
         self.audio_check.setChecked(settings.audio_enabled)
         self.audio_check.setToolTip("关闭后给 uxplay 传 -as 0，仅接收画面。")
 
+        self.legacy_check = QCheckBox("兼容模式：使用标准 AirPlay 端口（7000/7100）")
+        self.legacy_check.setChecked(settings.legacy_ports)
+        self.legacy_check.setToolTip(
+            "开启后 uxplay 固定监听标准端口，Mac/iPad 更容易连接。\n"
+            "如果连接异常可以尝试关闭。")
+
         self.flip_combo = QComboBox()
         for label, val in FLIP_MODES:
             self.flip_combo.addItem(label, val)
@@ -107,6 +113,7 @@ class SettingsDialog(QDialog):
         vform.addRow("视频画质：", self.quality_combo)
         vform.addRow("帧率：", self.fps_combo)
         vform.addRow("", self.audio_check)
+        vform.addRow("", self.legacy_check)
         vform.addRow("翻转：", self.flip_combo)
         vform.addRow("旋转：", self.rotate_combo)
         hint = QLabel("修改视频设置后会重启投屏服务")
@@ -415,6 +422,7 @@ class SettingsDialog(QDialog):
         self.quality_combo.setCurrentIndex(self.quality_combo.findData(d.video_quality))
         self.fps_combo.setCurrentIndex(self.fps_combo.findData(d.fps))
         self.audio_check.setChecked(d.audio_enabled)
+        self.legacy_check.setChecked(d.legacy_ports)
         self.flip_combo.setCurrentIndex(self.flip_combo.findData(d.flip_mode))
         self.rotate_combo.setCurrentIndex(self.rotate_combo.findData(d.rotate_mode))
         self.mode_combo.setCurrentIndex(self.mode_combo.findData(d.display_mode))
@@ -444,6 +452,7 @@ class SettingsDialog(QDialog):
         s.video_quality = self.quality_combo.currentData()
         s.fps = self.fps_combo.currentData()
         s.audio_enabled = self.audio_check.isChecked()
+        s.legacy_ports = self.legacy_check.isChecked()
         s.flip_mode = self.flip_combo.currentData()
         s.rotate_mode = self.rotate_combo.currentData()
         s.display_mode = self.mode_combo.currentData()

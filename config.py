@@ -83,6 +83,7 @@ class Settings:
     prevent_sleep: bool = True         # 禁止自动熄屏/系统休眠
     monitor_index: int = 0             # 全屏使用的显示器（QGuiApplication.screens() 顺序）
     audio_enabled: bool = True         # 传输音频（关闭时给 uxplay 传 -as 0）
+    legacy_ports: bool = True          # 使用标准 AirPlay 端口（-p，兼容性最好）
     flip_mode: str = "none"            # none | h | v | i
     rotate_mode: str = "none"          # none | r | l
     hide_cursor: bool = True           # 全屏投屏时闲置自动隐藏鼠标指针
@@ -117,6 +118,8 @@ class Settings:
             args += ["-r", self.rotate_mode.upper()]
         if not self.audio_enabled:
             args += ["-as", "0"]
+        if self.legacy_ports:
+            args.append("-p")  # 标准端口 7000/7010/7100，避免随机端口导致连接失败
         args += ["-vsync", "no"]
         return args
 
