@@ -290,6 +290,10 @@ class SettingsDialog(QDialog):
         about.setStyleSheet("color:#999; font-size:12px;")
         about.setWordWrap(True)
 
+        diag_btn = QPushButton("网络诊断")
+        diag_btn.setToolTip("检查 IP / Bonjour / 防火墙 / 进程，排查 iPad、Mac 搜不到本机的问题。")
+        diag_btn.clicked.connect(self._diagnose)
+
         gform.addRow("设备名称：", self.name_edit)
         gform.addRow("", self.autostart_check)
         gform.addRow("", self.sleep_check)
@@ -297,6 +301,7 @@ class SettingsDialog(QDialog):
         gform.addRow("", self.minimize_check)
         gform.addRow("", self.sound_check)
         gform.addRow("", about)
+        gform.addRow("", diag_btn)
 
         tabs.addTab(video_tab, "视频")
         tabs.addTab(display_tab, "显示")
@@ -362,6 +367,14 @@ class SettingsDialog(QDialog):
         self.kvm_status.setText(self._deskflow_status(self._settings))
         if exe is None:
             QMessageBox.warning(self, "Deskflow", "解压失败，请检查安装包。")
+
+    def _diagnose(self) -> None:
+        try:
+            import netdiag
+            text = netdiag.diagnose()
+        except Exception as exc:  # noqa: BLE001
+            text = f"诊断失败：{exc}"
+        QMessageBox.information(self, "网络诊断", text)
 
     def _copy_lan_url(self) -> None:
         text = self.lan_url.text().strip()

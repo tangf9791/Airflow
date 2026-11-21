@@ -93,13 +93,24 @@ MAC_TEMPLATE_NAME = "airflow-mac-client.command"
 PC_IP_PLACEHOLDER = "__AIRFLOW_PC_IP__"
 # 只替换赋值行，保留脚本里的占位符判断（否则判断行也会被替换，导致永远提示输入）
 PC_IP_ASSIGN = 'PC_IP="' + PC_IP_PLACEHOLDER + '"'
+PC_HOST_PLACEHOLDER = "__AIRFLOW_PC_HOST__"
+PC_HOST_ASSIGN = 'PC_HOST="' + PC_HOST_PLACEHOLDER + '"'
 
 
 def _fill_pc_ip(text: str) -> str:
+    """填入 IP 和 mDNS 主机名（换 IP 后仍可解析）。"""
     ip = local_ip()
     if not ip:
         return text
-    return text.replace(PC_IP_ASSIGN, 'PC_IP="' + ip + '"')
+    out = text.replace(PC_IP_ASSIGN, 'PC_IP="' + ip + '"')
+    try:
+        import socket
+        host = socket.gethostname().split(".")[0] + ".local"
+    except OSError:
+        host = ""
+    if host:
+        out = out.replace(PC_HOST_ASSIGN, 'PC_HOST="' + host + '"')
+    return out
 
 
 def local_ip() -> str:

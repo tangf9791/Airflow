@@ -45,7 +45,7 @@ from kvm import extract_portable, portable_dir, resolve_deskflow
 from lanshare import LanShare
 from settings_dialog import SettingsDialog
 
-APP_VERSION = "2.7.7"
+APP_VERSION = "2.7.8"
 LOG_FILE = Path(tempfile.gettempdir()) / "Airflow.log"
 
 VK_F1 = 0x70
@@ -64,6 +64,115 @@ def log(msg: str) -> None:
         pass
 
 
+FIREWALL_RULE = "Airflow uxplay"
+
+
+def runtime_dir() -> Path:
+    """固定运行目录（LOCALAPPDATA/Airflow），避免每次运行都换临时路径。"""
+    base = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / APP_NAME
+    return base
+
+
+def local_ip() -> str:
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(("223.5.5.5", 80))
+            return s.getsockname()[0]
+        finally:
+            s.close()
+    except OSError:
+        return ""
+
+
+def ensure_uxplay_runtime() -> Path | None:
+    """把内置 uxplay 复制到固定目录（每个版本只做一次）。
+
+    这样 uxplay.exe 路径永远不变，防火墙放行规则一次添加后长期有效；
+    也避免每次运行新临时目录导致规则越积越多、误点取消生成 Block 规则。
+    """
+    stable = runtime_dir() / "uxplay"
+    exe = stable / "uxplay.exe"
+    marker = stable / ".bundle-version"
+    meipass = Path(getattr(sys, "_MEIPASS", ""))
+    src = meipass / "uxplay" if meipass else None
+    if src is not None and src.is_dir():
+        try:
+            fresh = (exe.is_file() and marker.is_file()
+                     and marker.read_text(encoding="utf-8", errors="ignore").strip() == APP_VERSION)
+        except OSError:
+            fresh = False
+        if not fresh:
+            log(f"runtime: 复制 uxplay 到固定目录 {stable}")
+            stable.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(src, stable, dirs_exist_ok=True)
+            try:
+                marker.write_text(APP_VERSION, encoding="utf-8")
+            except OSError:
+                pass
+    return exe if exe.is_file() else None
+
+
+def _firewall_rule_ok(exe: Path) -> bool:
+    """检查放行规则是否已存在且指向当前 exe。"""
+    try:
+        res = subprocess.run(
+            ["netsh", "advfirewall", "firewall", "show", "rule", f"name={FIREWALL_RULE}"],
+            capture_output=True, text=True, timeout=20,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    if res.returncode != 0:
+        return False
+    text = (res.stdout or "").lower()
+    return str(exe).lower() in text and "allow" in text
+
+
+def ensure_firewall_rule(exe: Path) -> None:
+    """确保 uxplay 的入站放行规则存在（只需一次管理员确认）。"""
+    if _firewall_rule_ok(exe):
+        return
+    log("firewall: 添加 uxplay 放行规则（如弹出 UAC 请点“是”）")
+    args = (f'/c netsh advfirewall firewall delete rule name="{FIREWALL_RULE}" >nul 2>&1 & '
+            f'netsh advfirewall firewall add rule name="{FIREWALL_RULE}" dir=in action=allow '
+            f'program="{exe}" enable=yes profile=any')
+    try:
+        shell32.ShellExecuteW(None, "runas", "cmd.exe", args, None, 0)
+    except OSError as exc:
+        log(f"firewall: 调用失败 {exc}")
+
+
+def ensure_bonjour_running() -> None:
+    """Bonjour 服务若存在但未运行，尝试启动（IP 变化后 mDNS 需要它）。"""
+    try:
+        res = subprocess.run(["sc", "query", "Bonjour Service"],
+                             capture_output=True, text=True, timeout=15,
+                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except (OSError, subprocess.SubprocessError):
+        return
+    if res.returncode != 0:
+        return  # 未安装，交给 Bonjour 自动安装流程
+    if "RUNNING" in (res.stdout or "").upper():
+        return
+    log("bonjour: 服务未运行，尝试启动")
+    try:
+        subprocess.run(["sc", "start", "Bonjour Service"], capture_output=True, timeout=30,
+                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except (OSError, subprocess.SubprocessError):
+        pass
+    try:
+        res2 = subprocess.run(["sc", "query", "Bonjour Service"],
+                              capture_output=True, text=True, timeout=15,
+                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        if "RUNNING" not in (res2.stdout or "").upper():
+            shell32.ShellExecuteW(None, "runas", "cmd.exe",
+                                  '/c sc start "Bonjour Service"', None, 0)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
 def resolve_uxplay() -> Path | None:
     """按优先级查找 uxplay.exe（打包版：外部 uxplay\\ 子目录优先于内置副本）。"""
     env = os.environ.get("UXPLAY_EXE")
@@ -72,7 +181,8 @@ def resolve_uxplay() -> Path | None:
     if getattr(sys, "frozen", False):
         app_dir = Path(sys.executable).resolve().parent
         meipass = Path(getattr(sys, "_MEIPASS", app_dir))
-        candidates = [app_dir, app_dir / "uxplay", meipass / "uxplay", Path.cwd()]
+        candidates = [app_dir, app_dir / "uxplay", runtime_dir() / "uxplay",
+                      meipass / "uxplay", Path.cwd()]
     else:
         app_dir = Path(__file__).resolve().parent
         candidates = [app_dir, app_dir / "uxplay", Path.cwd()]
@@ -644,6 +754,7 @@ class ReceiverWindow(QWidget):
         self._cursor_timer.start()
         if not self._no_uxplay:
             self._ensure_bonjour()
+            self._prepare_runtime()
         self._ensure_lan_share()
         self._update_lan_ui()
         if self._no_uxplay:
@@ -691,6 +802,23 @@ class ReceiverWindow(QWidget):
         return self._settings.uxplay_args()
 
     # ---------- Bonjour / 键盘共享 ----------
+    def _prepare_runtime(self) -> None:
+        """启动前加固：固定运行目录、防火墙放行、Bonjour 守护、IP 变化检测。"""
+        exe = ensure_uxplay_runtime()
+        if exe is not None:
+            ensure_firewall_rule(exe)
+        ensure_bonjour_running()
+        ip = local_ip()
+        if ip:
+            old = self._settings.last_ip
+            if old and old != ip:
+                log(f"network: IP 变化 {old} -> {ip}")
+                self._status.setText(
+                    f"本机 IP 已变化：{old} → {ip}\n\n"
+                    f"Mac 如果搜不到本机，请按 F5 重启投屏服务")
+            self._settings.last_ip = ip
+            save_settings(self._settings)
+
     def _ensure_bonjour(self) -> None:
         """确保 Apple Bonjour 可用（缺失时自动安装）。"""
         self._bonjour_ok = bonjour_installed()

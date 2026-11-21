@@ -5,6 +5,7 @@
 # 不使用 set -u：任何变量缺失都不应中断连接
 
 PC_IP="__AIRFLOW_PC_IP__"
+PC_HOST="__AIRFLOW_PC_HOST__"
 DESKFLOW_VERSION="1.27.0"
 APP="/Applications/Deskflow.app"
 CONF_DIR="$HOME/Library/Deskflow"
@@ -70,13 +71,17 @@ CORE="$APP/Contents/MacOS/deskflow-core"
 [ -x "$CORE" ] || die "未找到 Deskflow 主程序。"
 
 mkdir -p "$CONF_DIR"
+HOSTS="$PC_IP"
+if [ -n "${PC_HOST:-}" ] && [ "$PC_HOST" != "__AIRFLOW_PC_HOST__" ]; then
+  HOSTS="$PC_IP,$PC_HOST"
+fi
 cat > "$CONF" <<EOF
 [core]
 coreMode=1
 computerName=Mac
 
 [client]
-remoteHost=$PC_IP
+remoteHost=$HOSTS
 
 [log]
 level=Info
